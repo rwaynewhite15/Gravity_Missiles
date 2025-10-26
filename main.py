@@ -4,9 +4,9 @@ import random
 
 pygame.init()
 
-WIDTH, HEIGHT = 2400, 1200
+WIDTH, HEIGHT = 1400, 800
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
-pygame.display.set_caption("Gravity Artillery")
+pygame.display.set_caption("Gravity Missiles")
 clock = pygame.time.Clock()
 
 # Colors
@@ -18,6 +18,12 @@ YELLOW = (255, 220, 50)
 GRAY = (150, 150, 150)
 PURPLE = (180, 100, 200)
 ORANGE = (255, 150, 50)
+GREEN = (50, 200, 50)
+
+# Game States
+MENU = 0
+PLAYING = 1
+GAME_OVER = 2
 
 class GravityObject:
     def __init__(self, x, y, mass):
@@ -77,7 +83,7 @@ class BlackHole:
         dist = math.sqrt(dist_sq)
         
         # Much stronger gravitational constant for black holes
-        G = 3.0
+        G = 5.0
         force = G * self.mass / dist_sq
         
         if dist > 0:
@@ -112,21 +118,16 @@ class Asteroid:
             return dist < self.radius
         return False
     
-    def explode(self, missile_color, missile_vx, missile_vy):
+    def explode(self, missile_vx, missile_vy):
         """Create multiple missiles firing in all directions"""
         self.destroyed = True
         fragments = []
-        num_fragments = random.randint(10, 15)
+        num_fragments = random.randint(5, 10)
         
         for i in range(num_fragments):
-            # angle = (360 / num_fragments) * i + random.uniform(-15, 15)
-            # angle_rad = math.radians(angle)
-            # speed = random.uniform(10, 50)
-            # vx = math.cos(angle_rad) * speed
-            # vy = math.sin(angle_rad) * speed
             vx = missile_vx + random.uniform(-10, 10)
             vy = missile_vy + random.uniform(-10, 10)
-            fragment = Missile(self.x, self.y, vx, vy, missile_color)
+            fragment = Missile(self.x, self.y, vx, vy, GRAY)
             fragments.append(fragment)
         
         return fragments
@@ -255,7 +256,7 @@ class Missile:
                 pygame.draw.circle(screen, ORANGE, (int(self.x), int(self.y)), 8, 2)
 
 class LaunchPad:
-    def __init__(self, x, y, color, name):
+    def __init__(self, x, y, color, name, is_cpu=False):
         self.x = x
         self.y = y
         self.color = color
@@ -263,35 +264,63 @@ class LaunchPad:
         self.angle = -45 if x < WIDTH/2 else -135
         self.power = 10
         self.health = 100
+        self.is_cpu = is_cpu
+        self.destroyed = False
         
     def draw(self, screen, is_active):
+        if self.destroyed:
+            return  # Don't draw if destroyed
+        
         # Draw health bar
         bar_width = 60
         bar_height = 8
         health_width = int(bar_width * (self.health / 100))
-        pygame.draw.rect(screen, GRAY, (self.x - bar_width//2, self.y - 40, bar_width, bar_height))
-        pygame.draw.rect(screen, self.color, (self.x - bar_width//2, self.y - 40, health_width, bar_height))
+        pygame.draw.rect(screen, GRAY, (self.x - bar_width//2, self.y - 50, bar_width, bar_height))
+        pygame.draw.rect(screen, self.color, (self.x - bar_width//2, self.y - 50, health_width, bar_height))
         
-        # Draw base
-        pygame.draw.rect(screen, self.color, (self.x - 20, self.y - 10, 40, 20))
+        # Draw flying saucer
+        # Bottom dome
+        pygame.draw.ellipse(screen, self.color, (self.x - 25, self.y - 5, 50, 15))
+        pygame.draw.ellipse(screen, tuple(max(0, c - 50) for c in self.color), (self.x - 25, self.y - 5, 50, 15), 2)
         
-        # Draw cannon
+        # Middle disk (main body)
+        pygame.draw.ellipse(screen, self.color, (self.x - 30, self.y - 15, 60, 20))
+        pygame.draw.ellipse(screen, tuple(min(255, c + 50) for c in self.color), (self.x - 30, self.y - 15, 60, 20), 2)
+        
+        # Top dome (cockpit)
+        pygame.draw.ellipse(screen, tuple(min(255, c + 80) for c in self.color), (self.x - 15, self.y - 25, 30, 15))
+        pygame.draw.ellipse(screen, WHITE, (self.x - 15, self.y - 25, 30, 15), 1)
+        
+        # Windows/lights
+        pygame.draw.circle(screen, YELLOW, (int(self.x - 15), int(self.y - 5)), 3)
+        pygame.draw.circle(screen, YELLOW, (int(self.x), int(self.y - 5)), 3)
+        pygame.draw.circle(screen, YELLOW, (int(self.x + 15), int(self.y - 5)), 3)
+        
+        # Draw cannon (energy beam emitter)
         angle_rad = math.radians(self.angle)
-        end_x = self.x + math.cos(angle_rad) * 30
-        end_y = self.y + math.sin(angle_rad) * 30
-        pygame.draw.line(screen, self.color, (self.x, self.y), (end_x, end_y), 6)
+        cannon_start_x = self.x + math.cos(angle_rad) * 15
+        cannon_start_y = self.y + math.sin(angle_rad) * 10
+        end_x = self.x + math.cos(angle_rad) * 40
+        end_y = self.y + math.sin(angle_rad) * 40
+        
+        # Beam emitter
+        pygame.draw.line(screen, tuple(min(255, c + 100) for c in self.color), 
+                        (cannon_start_x, cannon_start_y), (end_x, end_y), 4)
+        pygame.draw.circle(screen, YELLOW, (int(end_x), int(end_y)), 4)
         
         # Draw power indicator if active
         if is_active:
             power_length = self.power * 5
-            power_x = self.x + math.cos(angle_rad) * (30 + power_length)
-            power_y = self.y + math.sin(angle_rad) * (30 + power_length)
-            pygame.draw.line(screen, YELLOW, (end_x, end_y), (power_x, power_y), 2)
+            power_x = self.x + math.cos(angle_rad) * (40 + power_length)
+            power_y = self.y + math.sin(angle_rad) * (40 + power_length)
+            pygame.draw.line(screen, YELLOW, (end_x, end_y), (power_x, power_y), 3)
+            # Pulsing effect
+            pygame.draw.circle(screen, YELLOW, (int(power_x), int(power_y)), 6, 2)
         
         # Draw name
         font = pygame.font.Font(None, 24)
         text = font.render(self.name, True, WHITE)
-        screen.blit(text, (self.x - text.get_width()//2, self.y + 20))
+        screen.blit(text, (self.x - text.get_width()//2, self.y + 25))
         
     def fire(self):
         angle_rad = math.radians(self.angle)
@@ -306,22 +335,146 @@ class LaunchPad:
     
     def take_damage(self, damage):
         self.health -= damage
+        if self.health <= 0:
+            self.destroyed = True
         return self.health <= 0
 
-# Game setup
+    def explode(self, missile_vx, missile_vy):
+        """Create multiple missiles firing in all directions when destroyed"""
+        fragments = []
+        num_fragments = random.randint(15, 20)
+        
+        for i in range(num_fragments):
+            vx = missile_vx + random.uniform(-15, 15)
+            vy = missile_vy + random.uniform(-15, 15)
+            fragment = Missile(self.x, self.y, vx, vy, self.color)
+            fragments.append(fragment)
+        
+        return fragments
+
+class CPUPlayer:
+    def __init__(self, difficulty):
+        self.difficulty = difficulty  # "easy", "medium", "hard"
+        self.aim_timer = 0
+        self.aim_duration = 60  # frames to "think" before shooting
+        self.has_aimed = False
+        
+    def reset_aim(self):
+        self.aim_timer = 0
+        self.has_aimed = False
+        
+    def update(self, cpu_pad, target_pad, gravity_objects, black_holes):
+        """Update CPU AI and return True when ready to fire"""
+        if not self.has_aimed:
+            self.aim_timer += 1
+            
+            if self.aim_timer >= self.aim_duration:
+                self.aim(cpu_pad, target_pad, gravity_objects, black_holes)
+                self.has_aimed = True
+                return True
+        return False
+    
+    def aim(self, cpu_pad, target_pad, gravity_objects, black_holes):
+        """Calculate angle and power to hit target"""
+        dx = target_pad.x - cpu_pad.x
+        dy = target_pad.y - cpu_pad.y
+        distance = math.sqrt(dx**2 + dy**2)
+        
+        if self.difficulty == "easy":
+            # Easy: Aim roughly at opponent with large randomness
+            base_angle = math.degrees(math.atan2(dy, dx))
+            cpu_pad.angle = base_angle + random.uniform(-30, 30)
+            cpu_pad.power = random.randint(8, 16)
+            
+        elif self.difficulty == "medium":
+            # Medium: Better aim, considers distance
+            base_angle = math.degrees(math.atan2(dy, dx))
+            cpu_pad.angle = base_angle + random.uniform(-15, 15)
+            
+            # Adjust power based on distance
+            power = distance / 80
+            power = max(8, min(18, power))
+            cpu_pad.power = power + random.uniform(-2, 2)
+            
+        elif self.difficulty == "hard":
+            # Hard: Simulate trajectory to find best shot
+            best_angle = None
+            best_power = None
+            best_score = float('inf')
+            
+            # Try multiple angle/power combinations
+            for test_angle in range(-180, 180, 10):
+                for test_power in range(8, 20, 2):
+                    score = self.simulate_shot(cpu_pad, target_pad, test_angle, test_power, 
+                                              gravity_objects, black_holes)
+                    if score < best_score:
+                        best_score = score
+                        best_angle = test_angle
+                        best_power = test_power
+            
+            # Add small randomness to make it beatable
+            cpu_pad.angle = best_angle + random.uniform(-5, 5)
+            cpu_pad.power = best_power + random.uniform(-1, 1)
+    
+    def simulate_shot(self, cpu_pad, target_pad, angle, power, gravity_objects, black_holes):
+        """Simulate a shot and return distance to target (lower is better)"""
+        angle_rad = math.radians(angle)
+        x = cpu_pad.x + math.cos(angle_rad) * 35
+        y = cpu_pad.y + math.sin(angle_rad) * 35
+        vx = math.cos(angle_rad) * power
+        vy = math.sin(angle_rad) * power
+        
+        min_dist = float('inf')
+        
+        # Simulate for limited steps
+        for step in range(200):
+            # Apply gravity
+            for obj in gravity_objects:
+                fx, fy = obj.get_gravity_force(x, y)
+                vx += fx
+                vy += fy
+            
+            for bh in black_holes:
+                fx, fy = bh.get_gravity_force(x, y)
+                vx += fx
+                vy += fy
+                
+                # Check if captured
+                if bh.check_captured(x, y):
+                    return float('inf')  # Bad shot
+            
+            # Update position
+            x += vx
+            y += vy
+            
+            # Check distance to target
+            dist = math.sqrt((x - target_pad.x)**2 + (y - target_pad.y)**2)
+            min_dist = min(min_dist, dist)
+            
+            # If very close, this is a good shot
+            if dist < 30:
+                return dist
+            
+            # Check boundaries
+            if x < 0 or x > WIDTH or y < 0 or y > HEIGHT:
+                break
+        
+        return min_dist
+
+# Game setup functions
 def create_gravity_objects():
     objects = []
-    num_objects = random.randint(1, 4)
+    num_objects = 3
     for _ in range(num_objects):
         x = random.randint(200, WIDTH - 200)
         y = random.randint(150, HEIGHT - 150)
-        mass = random.randint(1000, 3000)
+        mass = random.randint(1000, 6000)
         objects.append(GravityObject(x, y, mass))
     return objects
 
 def create_black_holes():
     black_holes = []
-    num_black_holes = random.randint(1, 2)
+    num_black_holes = 1
     for _ in range(num_black_holes):
         x = random.randint(int(WIDTH * 0.3), int(WIDTH * 0.7))
         y = random.randint(200, HEIGHT - 200)
@@ -330,14 +483,14 @@ def create_black_holes():
 
 def create_asteroids():
     asteroids = []
-    num_asteroids = random.randint(1, 5)
+    num_asteroids = 1
     for _ in range(num_asteroids):
         x = random.randint(int(WIDTH * 0.2), int(WIDTH * 0.8))
         y = random.randint(100, HEIGHT - 100)
         asteroids.append(Asteroid(x, y))
     return asteroids
 
-def create_launch_pads():
+def create_launch_pads(is_cpu=False, cpu_difficulty=None):
     # Place first pad in left 10% of screen
     margin = 50
     x1 = random.randint(margin, int(WIDTH * 0.1))
@@ -352,31 +505,90 @@ def create_launch_pads():
     angle2 = math.degrees(math.atan2(y1 - y2, x1 - x2))
     
     player1 = LaunchPad(x1, y1, RED, "Player 1")
-    player2 = LaunchPad(x2, y2, BLUE, "Player 2")
+    
+    if is_cpu:
+        player2 = LaunchPad(x2, y2, BLUE, f"CPU ({cpu_difficulty.capitalize()})", is_cpu=True)
+    else:
+        player2 = LaunchPad(x2, y2, BLUE, "Player 2")
+    
     player1.angle = angle1
     player2.angle = angle2
     
     return player1, player2
 
+def draw_menu(screen, font_large, font_med, selected_option):
+    screen.fill(BLACK)
+    
+    # Title
+    title = font_large.render("GRAVITY MISSILES", True, YELLOW)
+    screen.blit(title, (WIDTH//2 - title.get_width()//2, 150))
+    
+    # Menu options
+    options = [
+        ("1. Player vs Player", WHITE if selected_option != 0 else GREEN),
+        ("2. Player vs CPU (Easy)", WHITE if selected_option != 1 else GREEN),
+        ("3. Player vs CPU (Medium)", WHITE if selected_option != 2 else GREEN),
+        ("4. Player vs CPU (Hard)", WHITE if selected_option != 3 else GREEN),
+        ("Q. Quit", WHITE if selected_option != 4 else GREEN)
+    ]
+    
+    y_pos = 300
+    for text, color in options:
+        option_text = font_med.render(text, True, color)
+        screen.blit(option_text, (WIDTH//2 - option_text.get_width()//2, y_pos))
+        y_pos += 60
+    
+    # Instructions
+    instructions = font_med.render("Use Arrow Keys and Press Enter", True, GRAY)
+    screen.blit(instructions, (WIDTH//2 - instructions.get_width()//2, HEIGHT - 100))
+
+def reset_game(is_cpu, cpu_difficulty):
+    player1, player2 = create_launch_pads(is_cpu, cpu_difficulty)
+    players = [player1, player2]
+    gravity_objects = create_gravity_objects()
+    black_holes = create_black_holes()
+    asteroids = create_asteroids()
+    missiles = []
+    shot_history = []  # Reset shot history
+    current_player = 0
+    winner = None
+    missile_fired = False
+    active_missile = None
+    
+    cpu_ai = None
+    if is_cpu:
+        cpu_ai = CPUPlayer(cpu_difficulty)
+    
+    return (player1, player2, players, gravity_objects, black_holes, 
+            asteroids, missiles, shot_history, current_player, winner, missile_fired, 
+            active_missile, cpu_ai)
+
 # Initialize game
+game_state = MENU
+selected_menu_option = 0
+is_cpu_game = False
+cpu_difficulty = None
+cpu_ai = None
+
 player1, player2 = create_launch_pads()
 gravity_objects = create_gravity_objects()
 black_holes = create_black_holes()
 asteroids = create_asteroids()
 missiles = []
+shot_history = []  # Keep track of last 5 shots
 current_player = 0
 players = [player1, player2]
-game_over = False
 winner = None
 active_missile = None
-
-# Game loop
-running = True
 missile_fired = False
 
 font_large = pygame.font.Font(None, 48)
 font_med = pygame.font.Font(None, 32)
 font_small = pygame.font.Font(None, 24)
+
+# Game loop
+running = True
+clock = pygame.time.Clock()
 
 while running:
     for event in pygame.event.get():
@@ -384,135 +596,296 @@ while running:
             running = False
         
         if event.type == pygame.KEYDOWN:
-            if not game_over and not missile_fired:
+            if game_state == MENU:
+                if event.key == pygame.K_UP:
+                    selected_menu_option = (selected_menu_option - 1) % 5
+                elif event.key == pygame.K_DOWN:
+                    selected_menu_option = (selected_menu_option + 1) % 5
+                elif event.key == pygame.K_RETURN or event.key == pygame.K_SPACE:
+                    if selected_menu_option == 0:
+                        # PvP
+                        is_cpu_game = False
+                        cpu_difficulty = None
+                        (player1, player2, players, gravity_objects, black_holes, 
+                         asteroids, missiles, shot_history, current_player, winner, missile_fired, 
+                         active_missile, cpu_ai) = reset_game(False, None)
+                        game_state = PLAYING
+                    elif selected_menu_option == 1:
+                        # CPU Easy
+                        is_cpu_game = True
+                        cpu_difficulty = "easy"
+                        (player1, player2, players, gravity_objects, black_holes, 
+                         asteroids, missiles, shot_history, current_player, winner, missile_fired, 
+                         active_missile, cpu_ai) = reset_game(True, "easy")
+                        game_state = PLAYING
+                    elif selected_menu_option == 2:
+                        # CPU Medium
+                        is_cpu_game = True
+                        cpu_difficulty = "medium"
+                        (player1, player2, players, gravity_objects, black_holes, 
+                         asteroids, missiles, shot_history, current_player, winner, missile_fired, 
+                         active_missile, cpu_ai) = reset_game(True, "medium")
+                        game_state = PLAYING
+                    elif selected_menu_option == 3:
+                        # CPU Hard
+                        is_cpu_game = True
+                        cpu_difficulty = "hard"
+                        (player1, player2, players, gravity_objects, black_holes, 
+                         asteroids, missiles, shot_history, current_player, winner, missile_fired, 
+                         active_missile, cpu_ai) = reset_game(True, "hard")
+                        game_state = PLAYING
+                    elif selected_menu_option == 4:
+                        running = False
+                elif event.key == pygame.K_1:
+                    is_cpu_game = False
+                    cpu_difficulty = None
+                    (player1, player2, players, gravity_objects, black_holes, 
+                     asteroids, missiles, shot_history, current_player, winner, missile_fired, 
+                     active_missile, cpu_ai) = reset_game(False, None)
+                    game_state = PLAYING
+                elif event.key == pygame.K_2:
+                    is_cpu_game = True
+                    cpu_difficulty = "easy"
+                    (player1, player2, players, gravity_objects, black_holes, 
+                     asteroids, missiles, shot_history, current_player, winner, missile_fired, 
+                     active_missile, cpu_ai) = reset_game(True, "easy")
+                    game_state = PLAYING
+                elif event.key == pygame.K_3:
+                    is_cpu_game = True
+                    cpu_difficulty = "medium"
+                    (player1, player2, players, gravity_objects, black_holes, 
+                     asteroids, missiles, shot_history, current_player, winner, missile_fired, 
+                     active_missile, cpu_ai) = reset_game(True, "medium")
+                    game_state = PLAYING
+                elif event.key == pygame.K_4:
+                    is_cpu_game = True
+                    cpu_difficulty = "hard"
+                    (player1, player2, players, gravity_objects, black_holes, 
+                     asteroids, missiles, shot_history, current_player, winner, missile_fired, 
+                     active_missile, cpu_ai) = reset_game(True, "hard")
+                    game_state = PLAYING
+                elif event.key == pygame.K_q:
+                    running = False
+                    
+            elif game_state == PLAYING:
                 current = players[current_player]
                 
-                if event.key == pygame.K_LEFT:
-                    current.angle -= 5
-                elif event.key == pygame.K_RIGHT:
-                    current.angle += 5
-                elif event.key == pygame.K_UP:
-                    current.power = min(20, current.power + 1)
-                elif event.key == pygame.K_DOWN:
-                    current.power = max(3, current.power - 1)
-                elif event.key == pygame.K_SPACE:
-                    missile = current.fire()
-                    missiles.append(missile)
-                    missile_fired = True
-                    active_missile = missile
-            elif missile_fired and active_missile and active_missile.active:
-                if event.key == pygame.K_SPACE or event.key == pygame.K_UP:
-                    active_missile.apply_thrust()
-                elif event.key == pygame.K_DOWN:
-                    active_missile.apply_reverse_thrust()
-                elif event.key == pygame.K_RIGHT:
-                    active_missile.apply_left_thrust()
-                elif event.key == pygame.K_LEFT:
-                    active_missile.apply_right_thrust()
-                elif event.key == pygame.K_LSHIFT or event.key == pygame.K_RSHIFT:
-                    active_missile.apply_reverse_thrust()
+                # Only allow human input if current player is not CPU
+                if not current.is_cpu:
+                    if not missile_fired:
+                        if event.key == pygame.K_LEFT:
+                            current.angle -= 5
+                        elif event.key == pygame.K_RIGHT:
+                            current.angle += 5
+                        elif event.key == pygame.K_UP:
+                            current.power = min(20, current.power + 1)
+                        elif event.key == pygame.K_DOWN:
+                            current.power = max(3, current.power - 1)
+                        elif event.key == pygame.K_SPACE:
+                            missile = current.fire()
+                            missiles.append(missile)
+                            missile_fired = True
+                            active_missile = missile
+                    elif missile_fired and active_missile and active_missile.active:
+                        if event.key == pygame.K_SPACE or event.key == pygame.K_UP:
+                            active_missile.apply_thrust()
+                        elif event.key == pygame.K_DOWN:
+                            active_missile.apply_reverse_thrust()
+                        elif event.key == pygame.K_RIGHT:
+                            active_missile.apply_left_thrust()
+                        elif event.key == pygame.K_LEFT:
+                            active_missile.apply_right_thrust()
+                        elif event.key == pygame.K_LSHIFT or event.key == pygame.K_RSHIFT:
+                            active_missile.apply_reverse_thrust()
+                
+                if event.key == pygame.K_p:
+                    # End current turn and switch to next player
+                    current_player = 1 - current_player
+                    missile_fired = False
+                    active_missile = None
+                    # Deactivate any active missiles
+                    for missile in missiles:
+                        missile.active = False
+                    # Reset asteroids for next turn
+                    asteroids = create_asteroids()
+                    # Reset CPU AI if switching to CPU
+                    if is_cpu_game and players[current_player].is_cpu:
+                        cpu_ai.reset_aim()
+                
+                if event.key == pygame.K_r:
+                    # Reset game with same settings
+                    (player1, player2, players, gravity_objects, black_holes, 
+                     asteroids, missiles, shot_history, current_player, winner, missile_fired, 
+                     active_missile, cpu_ai) = reset_game(is_cpu_game, cpu_difficulty)
+                    game_state = PLAYING
+                    
+                if event.key == pygame.K_ESCAPE:
+                    game_state = MENU
+                    selected_menu_option = 0
+                    
+            elif game_state == GAME_OVER:
+                if event.key == pygame.K_r:
+                    # Reset game with same settings
+                    (player1, player2, players, gravity_objects, black_holes, 
+                     asteroids, missiles, shot_history, current_player, winner, missile_fired, 
+                     active_missile, cpu_ai) = reset_game(is_cpu_game, cpu_difficulty)
+                    game_state = PLAYING
+                elif event.key == pygame.K_ESCAPE:
+                    game_state = MENU
+                    selected_menu_option = 0
+    
+    # Update game logic
+    if game_state == PLAYING or game_state == GAME_OVER:
+        # CPU AI logic (only during PLAYING)
+        if game_state == PLAYING and is_cpu_game and players[current_player].is_cpu and not missile_fired:
+            if cpu_ai.update(players[current_player], players[1 - current_player], 
+                           gravity_objects, black_holes):
+                # CPU is ready to fire
+                missile = players[current_player].fire()
+                missiles.append(missile)
+                missile_fired = True
+                active_missile = missile
+                cpu_ai.reset_aim()
+        
+        # Update missiles (continue even during GAME_OVER)
+        if missile_fired:
+            all_inactive = True
+            for missile in missiles:
+                if missile.active:
+                    missile.update(gravity_objects, black_holes)
+                    all_inactive = False
+                    
+                    # Check collision with asteroids
+                    for asteroid in asteroids:
+                        if missile.active and asteroid.check_collision(missile.x, missile.y):
+                            missile.active = False
+                            # Create fragment missiles from asteroid
+                            fragments = asteroid.explode(missile.vx, missile.vy)
+                            missiles.extend(fragments)
+                            break
+                    
+                    # Check collision with players (including friendly fire)
+                    for i, player in enumerate(players):
+                        if missile.active and not player.destroyed and game_state == PLAYING:
+                            dist = math.sqrt((missile.x - player.x)**2 + (missile.y - player.y)**2)
+                            if dist < 25:
+                                missile.active = False
+                                if player.take_damage(20):
+                                    # Player destroyed - create explosion
+                                    fragments = player.explode(missile.vx, missile.vy)
+                                    missiles.extend(fragments)
+                                    game_state = GAME_OVER
+                                    winner = players[1-i]
+                                else:
+                                    # Relocate the hit player
+                                    margin = 50
+                                    if i == 0:  # Player 1 - left 10%
+                                        player.x = random.randint(margin, int(WIDTH * 0.1))
+                                    else:  # Player 2 - right 10%
+                                        player.x = random.randint(int(WIDTH * 0.9), WIDTH - margin)
+                                    player.y = random.randint(margin, HEIGHT - margin)
+                                    
+                                    # Reorient cannon toward opponent
+                                    other_player = players[1-i]
+                                    player.angle = math.degrees(math.atan2(other_player.y - player.y, other_player.x - player.x))
             
-            if event.key == pygame.K_r:
-                # Reset game
-                player1, player2 = create_launch_pads()
-                players = [player1, player2]
-                gravity_objects = create_gravity_objects()
-                black_holes = create_black_holes()
-                asteroids = create_asteroids()
-                missiles = []
-                current_player = 0
-                game_over = False
-                winner = None
+            # Switch turns when all missiles are done
+            if all_inactive and game_state == PLAYING:
+                # Save the trails of missiles from this shot to history
+                shot_trails = []
+                for missile in missiles:
+                    if len(missile.trail) > 1:
+                        shot_trails.append((missile.trail[:], missile.color))
+                
+                if shot_trails:
+                    # Store with player identifier
+                    shot_history.append((current_player, shot_trails))
+                    
+                    # Keep only the last shot from each player (max 2 shots total)
+                    # Remove older shots from the same player
+                    player_shots = [i for i, (player_id, _) in enumerate(shot_history) if player_id == current_player]
+                    if len(player_shots) > 1:
+                        # Remove the oldest shot from this player
+                        shot_history.pop(player_shots[0])
+                
+                current_player = 1 - current_player
                 missile_fired = False
                 active_missile = None
-    
-    # Update missiles
-    if missile_fired:
-        all_inactive = True
-        for missile in missiles:
-            if missile.active:
-                missile.update(gravity_objects, black_holes)
-                all_inactive = False
-                
-                # Check collision with asteroids
-                for asteroid in asteroids:
-                    if missile.active and asteroid.check_collision(missile.x, missile.y):
-                        missile.active = False
-                        # Create fragment missiles from asteroid
-                        fragments = asteroid.explode(missile.color, missile.vx, missile.vy)
-                        missiles.extend(fragments)
-                        break
-                
-                # Check collision with players
-                for i, player in enumerate(players):
-                    if missile.active and missile.color != player.color:
-                        dist = math.sqrt((missile.x - player.x)**2 + (missile.y - player.y)**2)
-                        if dist < 25:
-                            missile.active = False
-                            if player.take_damage(50):
-                                game_over = True
-                                winner = players[1-i]
-                            else:
-                                # Relocate the hit player
-                                margin = 50
-                                if i == 0:  # Player 1 - left 10%
-                                    player.x = random.randint(margin, int(WIDTH * 0.1))
-                                else:  # Player 2 - right 10%
-                                    player.x = random.randint(int(WIDTH * 0.9), WIDTH - margin)
-                                player.y = random.randint(margin, HEIGHT - margin)
-                                
-                                # Reorient cannon toward opponent
-                                other_player = players[1-i]
-                                player.angle = math.degrees(math.atan2(other_player.y - player.y, other_player.x - player.x))
-        
-        # Switch turns when all missiles are done
-        if all_inactive and not game_over:
-            current_player = 1 - current_player
-            missile_fired = False
-            active_missile = None
-            # Reset asteroids for next turn
-            asteroids = create_asteroids()
+                # Reset asteroids for next turn
+                asteroids = create_asteroids()
+                # Clear current missiles
+                missiles = []
+                # Reset CPU AI if switching to CPU
+                if is_cpu_game and players[current_player].is_cpu:
+                    cpu_ai.reset_aim()
     
     # Draw
     screen.fill(BLACK)
     
-    # Draw gravity objects
-    for obj in gravity_objects:
-        obj.draw(screen)
-    
-    # Draw black holes
-    for bh in black_holes:
-        bh.draw(screen)
-    
-    # Draw asteroids
-    for asteroid in asteroids:
-        asteroid.draw(screen)
-    
-    # Draw missiles
-    for missile in missiles:
-        missile.draw(screen)
-    
-    # Draw players
-    for i, player in enumerate(players):
-        player.draw(screen, i == current_player and not missile_fired and not game_over)
-    
-    # Draw UI
-    if not game_over:
+    if game_state == MENU:
+        draw_menu(screen, font_large, font_med, selected_menu_option)
+        
+    elif game_state == PLAYING:
+        # Draw gravity objects
+        for obj in gravity_objects:
+            obj.draw(screen)
+        
+        # Draw black holes
+        for bh in black_holes:
+            bh.draw(screen)
+        
+        # Draw asteroids
+        for asteroid in asteroids:
+            asteroid.draw(screen)
+        
+        # Draw previous shot trails (last shot from each player)
+        for player_id, shot in shot_history:
+            for trail, color in shot:
+                if len(trail) > 1:
+                    for i in range(len(trail) - 1):
+                        pygame.draw.line(screen, color, trail[i], trail[i+1], 1)
+
+        # Draw current missiles
+        for missile in missiles:
+            missile.draw(screen)
+        
+        # Draw players
+        for i, player in enumerate(players):
+            player.draw(screen, i == current_player and not missile_fired)
+        
+        # Draw UI
         turn_text = font_med.render(f"{players[current_player].name}'s Turn", True, players[current_player].color)
         screen.blit(turn_text, (WIDTH//2 - turn_text.get_width()//2, 20))
         
-        if missile_fired and active_missile and active_missile.active:
-            controls = f"Space/↑: Forward | ↓/Shift: Reverse | ←/→: Strafe ({active_missile.fuel} fuel)"
+        if missile_fired and active_missile and active_missile.active and not players[current_player].is_cpu:
+            controls = f"Space/↑: Forward | ↓/Shift: Reverse | ←/→: Strafe ({active_missile.fuel} fuel) | P: End Turn"
             controls_text = font_small.render(controls, True, ORANGE)
-        else:
-            controls = "Arrow Keys: Aim & Power | Space: Fire"
+        elif not players[current_player].is_cpu:
+            controls = "Arrow Keys: Aim & Power | Space: Fire | P: End Turn | ESC: Menu"
             controls_text = font_small.render(controls, True, WHITE)
+        else:
+            controls = "CPU is thinking..."
+            controls_text = font_small.render(controls, True, YELLOW)
         screen.blit(controls_text, (WIDTH//2 - controls_text.get_width()//2, 60))
-    else:
+    
+    elif game_state == GAME_OVER:
+        # Draw final game state
+        for obj in gravity_objects:
+            obj.draw(screen)
+        for bh in black_holes:
+            bh.draw(screen)
+        for asteroid in asteroids:
+            asteroid.draw(screen)
+        for missile in missiles:
+            missile.draw(screen)
+        for player in players:
+            player.draw(screen, False)
+        
+        # Draw game over text
         game_over_text = font_large.render(f"{winner.name} Wins!", True, winner.color)
         screen.blit(game_over_text, (WIDTH//2 - game_over_text.get_width()//2, HEIGHT//2 - 50))
         
-        restart_text = font_med.render("Press R to Restart", True, WHITE)
+        restart_text = font_med.render("Press R to Restart | ESC for Menu", True, WHITE)
         screen.blit(restart_text, (WIDTH//2 - restart_text.get_width()//2, HEIGHT//2 + 20))
     
     pygame.display.flip()
