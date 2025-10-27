@@ -3,11 +3,38 @@ import math
 import random
 
 pygame.init()
+pygame.mixer.init() # Initialize mixer for sound effects
+
+# Load sounds
+try:
+    # Sound effects
+    sound_explode = pygame.mixer.Sound('sound/explode.wav')
+    sound_hit = pygame.mixer.Sound('sound/hit.wav')
+    sound_choose = pygame.mixer.Sound('sound/shoot.wav')
+    sound_fire = pygame.mixer.Sound('sound/fire.wav')
+    sound_explode.set_volume(0.15)  # Set explosion sound volume lower
+    sound_hit.set_volume(0.125)  # Set hit sound volume lower
+    sound_choose.set_volume(0.125)  # Set choose sound volume lower
+    sound_fire.set_volume(0.125)  # Set fire sound volume lower
+    # Background music
+    pygame.mixer.music.load('sound/boss.ogg')
+    pygame.mixer.music.set_volume(0.25)  # 25% volume
+    pygame.mixer.music.play(-1)  # Loop forever
+except:
+    print("Sound files not found - continuing without sound")
 
 WIDTH, HEIGHT = 1400, 800
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
 pygame.display.set_caption("Gravity Missiles")
 clock = pygame.time.Clock()
+
+# Load background image
+try:
+    background = pygame.image.load('bg5.jpg')
+    background = pygame.transform.scale(background, (WIDTH, HEIGHT))  # Scale to fit screen
+except:
+    print("Background image not found - using black background")
+    background = None
 
 # Colors
 WHITE = (255, 255, 255)
@@ -32,12 +59,74 @@ class GravityObject:
         self.mass = mass
         self.radius = max(15, min(40, mass / 50))
         
+        # Assign a random planet type
+        planet_types = ['mars', 'jupiter', 'saturn', 'neptune', 'uranus', 'venus']
+        self.planet_type = random.choice(planet_types)
+
     def draw(self, screen):
         # Draw gravity well visualization
         for i in range(3):
             alpha_radius = self.radius + i * 20
             pygame.draw.circle(screen, (*PURPLE[:3], 30), (int(self.x), int(self.y)), int(alpha_radius), 1)
-        pygame.draw.circle(screen, PURPLE, (int(self.x), int(self.y)), int(self.radius))
+        
+        # Draw planet based on type
+        if self.planet_type == 'mars':
+            # Mars - Red planet
+            pygame.draw.circle(screen, (193, 68, 14), (int(self.x), int(self.y)), int(self.radius))
+            pygame.draw.circle(screen, (150, 50, 10), (int(self.x - self.radius/3), int(self.y - self.radius/3)), int(self.radius/4))
+            pygame.draw.circle(screen, (170, 60, 12), (int(self.x + self.radius/4), int(self.y + self.radius/4)), int(self.radius/3))
+        
+        elif self.planet_type == 'jupiter':
+            # Jupiter - Orange with stripes
+            pygame.draw.circle(screen, (216, 146, 88), (int(self.x), int(self.y)), int(self.radius))
+            # Bands
+            for i in range(-1, 1):
+                y_offset = i * self.radius / 3
+                pygame.draw.ellipse(screen, (180, 120, 70), 
+                                  (self.x - self.radius, self.y + y_offset - 3, self.radius * 2, 6))
+            # Great Red Spot
+            pygame.draw.ellipse(screen, (200, 100, 80), 
+                              (self.x - self.radius/2, self.y, self.radius * 0.6, self.radius * 0.4))
+        
+        elif self.planet_type == 'saturn':
+            # Saturn - Pale yellow with rings
+            pygame.draw.circle(screen, (237, 221, 152), (int(self.x), int(self.y)), int(self.radius))
+            pygame.draw.circle(screen, (220, 200, 130), (int(self.x), int(self.y)), int(self.radius), 2)
+            # Rings
+            ring_width = self.radius * 4
+            ring_height = self.radius * 0.4
+            pygame.draw.ellipse(screen, (200, 180, 120), 
+                              (self.x - ring_width/2, self.y - ring_height/2, ring_width, ring_height), 3)
+            pygame.draw.ellipse(screen, (180, 160, 100), 
+                              (self.x - ring_width/2 + 4, self.y - ring_height/2 + 2, ring_width - 8, ring_height - 4), 2)
+        
+        elif self.planet_type == 'neptune':
+            # Neptune - Deep blue
+            pygame.draw.circle(screen, (62, 84, 232), (int(self.x), int(self.y)), int(self.radius))
+            pygame.draw.circle(screen, (82, 104, 255), (int(self.x - self.radius/2), int(self.y - self.radius/4)), int(self.radius/3))
+            # Dark spot
+            pygame.draw.ellipse(screen, (40, 60, 180), 
+                              (self.x - self.radius/3, self.y, self.radius * 0.5, self.radius * 0.2))
+        
+        elif self.planet_type == 'uranus':
+            # Uranus - Cyan/turquoise
+            pygame.draw.circle(screen, (79, 208, 231), (int(self.x), int(self.y)), int(self.radius))
+            pygame.draw.circle(screen, (100, 220, 240), (int(self.x), int(self.y)), int(self.radius), 2)
+            # Faint bands
+            for i in range(0, 1):
+                y_offset = i * self.radius / 2
+                pygame.draw.line(screen, (60, 180, 200), 
+                               (self.x - self.radius, self.y + y_offset), 
+                               (self.x + self.radius, self.y + y_offset), 4)
+        
+        elif self.planet_type == 'venus':
+            # Venus - Pale yellow/white
+            pygame.draw.circle(screen, (255, 240, 200), (int(self.x), int(self.y)), int(self.radius))
+            pygame.draw.circle(screen, (240, 220, 180), (int(self.x), int(self.y)), int(self.radius), 2)
+            # Cloud patterns
+            pygame.draw.arc(screen, (230, 210, 170), 
+                          (self.x - self.radius, self.y - self.radius, self.radius * 2, self.radius * 2), 
+                          0, 3.14, 2)
         
     def get_gravity_force(self, x, y):
         dx = self.x - x
@@ -103,14 +192,32 @@ class Asteroid:
         self.color = (150, 150, 150)
         self.destroyed = False
         
+        # Generate random shape points
+        self.num_points = random.randint(8, 12)
+        self.shape_points = []
+        for i in range(self.num_points):
+            angle = (2 * math.pi * i) / self.num_points
+            # Randomize radius for each point to make irregular shape
+            point_radius = self.radius * random.uniform(0.7, 1.0)
+            point_x = self.x + math.cos(angle) * point_radius
+            point_y = self.y + math.sin(angle) * point_radius
+            self.shape_points.append((point_x, point_y))
+        
     def draw(self, screen):
         if not self.destroyed:
-            # Draw asteroid with rocky appearance
-            pygame.draw.circle(screen, self.color, (int(self.x), int(self.y)), self.radius)
-            pygame.draw.circle(screen, (100, 100, 100), (int(self.x), int(self.y)), self.radius, 3)
-            # Add some detail circles
-            pygame.draw.circle(screen, (120, 120, 120), (int(self.x - 8), int(self.y - 8)), 5)
-            pygame.draw.circle(screen, (120, 120, 120), (int(self.x + 10), int(self.y + 5)), 7)
+            # Draw asteroid with irregular rocky shape
+            if len(self.shape_points) > 2:
+                pygame.draw.polygon(screen, self.color, self.shape_points)
+                pygame.draw.polygon(screen, (100, 100, 100), self.shape_points, 3)
+            
+            # Add some crater details
+            for i in range(2):
+                angle = math.pi
+                distance = self.radius * i * .125 + 1
+                crater_x = int(self.x + math.cos(angle) * distance)
+                crater_y = int(self.y + math.sin(angle) * distance)
+                crater_size = 5
+                pygame.draw.circle(screen, (120, 120, 120), (crater_x, crater_y), crater_size)
     
     def check_collision(self, missile_x, missile_y):
         if not self.destroyed:
@@ -122,7 +229,7 @@ class Asteroid:
         """Create multiple missiles firing in all directions"""
         self.destroyed = True
         fragments = []
-        num_fragments = random.randint(5, 10)
+        num_fragments = random.randint(10, 15)
         
         for i in range(num_fragments):
             vx = missile_vx + random.uniform(-10, 10)
@@ -411,11 +518,11 @@ class CPUPlayer:
                         best_score = score
                         best_angle = test_angle
                         best_power = test_power
-            
-            # Add small randomness to make it beatable
-            cpu_pad.angle = best_angle + random.uniform(-5, 5)
-            cpu_pad.power = best_power + random.uniform(-1, 1)
-    
+
+            # little randomness to avoid perfect shots
+            cpu_pad.angle = best_angle + random.uniform(-.025, .025)
+            cpu_pad.power = best_power + random.uniform(-.05, .05)
+
     def simulate_shot(self, cpu_pad, target_pad, angle, power, gravity_objects, black_holes):
         """Simulate a shot and return distance to target (lower is better)"""
         angle_rad = math.radians(angle)
@@ -465,29 +572,124 @@ class CPUPlayer:
 def create_gravity_objects():
     objects = []
     num_objects = 3
+    min_distance_between_planets = 250  # Planets should be far from each other
+    
     for _ in range(num_objects):
-        x = random.randint(200, WIDTH - 200)
-        y = random.randint(150, HEIGHT - 150)
-        mass = random.randint(1000, 6000)
-        objects.append(GravityObject(x, y, mass))
+        attempts = 0
+        while attempts < 100:
+            x = random.randint(300, WIDTH - 300)
+            y = random.randint(250, HEIGHT - 250)
+            
+            # Check distance from all existing planets
+            valid = True
+            for obj in objects:
+                dist = math.sqrt((x - obj.x)**2 + (y - obj.y)**2)
+                if dist < min_distance_between_planets:
+                    valid = False
+                    break
+            
+            if valid:
+                mass = random.randint(1000, 3000)
+                objects.append(GravityObject(x, y, mass))
+                break
+            
+            attempts += 1
+    
     return objects
 
-def create_black_holes():
+def create_black_holes(gravity_objects, launch_pads):
     black_holes = []
     num_black_holes = 1
+    min_distance_from_planets = 300  # Black holes need even more space from planets
+    min_distance_from_pads = 250
+    
     for _ in range(num_black_holes):
-        x = random.randint(int(WIDTH * 0.3), int(WIDTH * 0.7))
-        y = random.randint(200, HEIGHT - 200)
-        black_holes.append(BlackHole(x, y))
+        attempts = 0
+        while attempts < 100:
+            x = random.randint(int(WIDTH * 0.3), int(WIDTH * 0.7))
+            y = random.randint(250, HEIGHT - 250)
+            
+            # Check distance from launch pads
+            valid = True
+            for pad in launch_pads:
+                dist = math.sqrt((x - pad.x)**2 + (y - pad.y)**2)
+                if dist < min_distance_from_pads:
+                    valid = False
+                    break
+            
+            # Check distance from planets (gravity objects)
+            if valid:
+                for obj in gravity_objects:
+                    dist = math.sqrt((x - obj.x)**2 + (y - obj.y)**2)
+                    if dist < min_distance_from_planets:
+                        valid = False
+                        break
+            
+            # Check distance from other black holes
+            if valid:
+                for bh in black_holes:
+                    dist = math.sqrt((x - bh.x)**2 + (y - bh.y)**2)
+                    if dist < min_distance_from_planets:
+                        valid = False
+                        break
+            
+            if valid:
+                black_holes.append(BlackHole(x, y))
+                break
+            
+            attempts += 1
+    
     return black_holes
 
-def create_asteroids():
+def create_asteroids(gravity_objects, black_holes, launch_pads):
     asteroids = []
     num_asteroids = 1
+    min_distance = 150  # Minimum distance from other objects
+    
     for _ in range(num_asteroids):
-        x = random.randint(int(WIDTH * 0.2), int(WIDTH * 0.8))
-        y = random.randint(100, HEIGHT - 100)
-        asteroids.append(Asteroid(x, y))
+        attempts = 0
+        while attempts < 100:
+            x = random.randint(int(WIDTH * 0.2), int(WIDTH * 0.8))
+            y = random.randint(150, HEIGHT - 150)
+            
+            # Check distance from launch pads
+            valid = True
+            for pad in launch_pads:
+                dist = math.sqrt((x - pad.x)**2 + (y - pad.y)**2)
+                if dist < min_distance:
+                    valid = False
+                    break
+            
+            # Check distance from gravity objects
+            if valid:
+                for obj in gravity_objects:
+                    dist = math.sqrt((x - obj.x)**2 + (y - obj.y)**2)
+                    if dist < min_distance:
+                        valid = False
+                        break
+            
+            # Check distance from black holes
+            if valid:
+                for bh in black_holes:
+                    dist = math.sqrt((x - bh.x)**2 + (y - bh.y)**2)
+                    if dist < min_distance:
+                        valid = False
+                        break
+            
+            # Check distance from other asteroids
+            if valid:
+                for ast in asteroids:
+                    dist = math.sqrt((x - ast.x)**2 + (y - ast.y)**2)
+                    if dist < min_distance:
+                        valid = False
+                        break
+            
+            if valid:
+                asteroids.append(Asteroid(x, y))
+                break
+            
+            attempts += 1
+    
     return asteroids
 
 def create_launch_pads(is_cpu=False, cpu_difficulty=None):
@@ -517,8 +719,12 @@ def create_launch_pads(is_cpu=False, cpu_difficulty=None):
     return player1, player2
 
 def draw_menu(screen, font_large, font_med, selected_option):
-    screen.fill(BLACK)
-    
+    # Draw background
+    if background:
+        screen.blit(background, (0, 0))
+    else:
+        screen.fill(BLACK)
+
     # Title
     title = font_large.render("GRAVITY MISSILES", True, YELLOW)
     screen.blit(title, (WIDTH//2 - title.get_width()//2, 150))
@@ -546,10 +752,10 @@ def reset_game(is_cpu, cpu_difficulty):
     player1, player2 = create_launch_pads(is_cpu, cpu_difficulty)
     players = [player1, player2]
     gravity_objects = create_gravity_objects()
-    black_holes = create_black_holes()
-    asteroids = create_asteroids()
+    black_holes = create_black_holes(gravity_objects, players)
+    asteroids = create_asteroids(gravity_objects, black_holes, players)
     missiles = []
-    shot_history = []  # Reset shot history
+    shot_history = []
     current_player = 0
     winner = None
     missile_fired = False
@@ -571,9 +777,10 @@ cpu_difficulty = None
 cpu_ai = None
 
 player1, player2 = create_launch_pads()
+players = [player1, player2]
 gravity_objects = create_gravity_objects()
-black_holes = create_black_holes()
-asteroids = create_asteroids()
+black_holes = create_black_holes(gravity_objects, players)
+asteroids = create_asteroids(gravity_objects, black_holes, players)
 missiles = []
 shot_history = []  # Keep track of last 5 shots
 current_player = 0
@@ -589,19 +796,56 @@ font_small = pygame.font.Font(None, 24)
 # Game loop
 running = True
 clock = pygame.time.Clock()
+mouse_dragging = False
 
 while running:
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
         
+        if event.type == pygame.MOUSEBUTTONDOWN:
+            if event.button == 1:  # Left mouse button
+                if game_state == PLAYING and not missile_fired:
+                    current = players[current_player]
+                    if not current.is_cpu:
+                        # Check if clicking near the current player
+                        mouse_x, mouse_y = event.pos
+                        dist = math.sqrt((mouse_x - current.x)**2 + (mouse_y - current.y)**2)
+                        if dist < 100:  # Within 100 pixels of player
+                            mouse_dragging = True
+        
+        if event.type == pygame.MOUSEBUTTONUP:
+            if event.button == 1:
+                mouse_dragging = False
+        
+        if event.type == pygame.MOUSEMOTION:
+            if mouse_dragging and game_state == PLAYING and not missile_fired:
+                current = players[current_player]
+                if not current.is_cpu:
+                    mouse_x, mouse_y = event.pos
+                    
+                    # Calculate angle from player to mouse
+                    dx = mouse_x - current.x
+                    dy = mouse_y - current.y
+                    current.angle = math.degrees(math.atan2(dy, dx))
+                    
+                    # Calculate power based on distance (capped between 3 and 20)
+                    distance = math.sqrt(dx**2 + dy**2)
+                    current.power = max(3, min(20, distance / 10))
+
         if event.type == pygame.KEYDOWN:
             if game_state == MENU:
                 if event.key == pygame.K_UP:
+                    if sound_choose:
+                        sound_choose.play()
                     selected_menu_option = (selected_menu_option - 1) % 5
                 elif event.key == pygame.K_DOWN:
+                    if sound_choose:
+                        sound_choose.play()
                     selected_menu_option = (selected_menu_option + 1) % 5
                 elif event.key == pygame.K_RETURN or event.key == pygame.K_SPACE:
+                    if sound_fire:
+                        sound_fire.play()
                     if selected_menu_option == 0:
                         # PvP
                         is_cpu_game = False
@@ -674,14 +918,16 @@ while running:
                 if not current.is_cpu:
                     if not missile_fired:
                         if event.key == pygame.K_LEFT:
-                            current.angle -= 5
+                            current.angle -= .5
                         elif event.key == pygame.K_RIGHT:
-                            current.angle += 5
+                            current.angle += .5
                         elif event.key == pygame.K_UP:
-                            current.power = min(20, current.power + 1)
+                            current.power = min(20, current.power + .5)
                         elif event.key == pygame.K_DOWN:
-                            current.power = max(3, current.power - 1)
+                            current.power = max(3, current.power - .5)
                         elif event.key == pygame.K_SPACE:
+                            if sound_fire:
+                                sound_fire.play()
                             missile = current.fire()
                             missiles.append(missile)
                             missile_fired = True
@@ -707,7 +953,7 @@ while running:
                     for missile in missiles:
                         missile.active = False
                     # Reset asteroids for next turn
-                    asteroids = create_asteroids()
+                    asteroids = create_asteroids(gravity_objects, black_holes, players)
                     # Reset CPU AI if switching to CPU
                     if is_cpu_game and players[current_player].is_cpu:
                         cpu_ai.reset_aim()
@@ -742,6 +988,8 @@ while running:
                            gravity_objects, black_holes):
                 # CPU is ready to fire
                 missile = players[current_player].fire()
+                if sound_fire:
+                    sound_fire.play()
                 missiles.append(missile)
                 missile_fired = True
                 active_missile = missile
@@ -758,6 +1006,8 @@ while running:
                     # Check collision with asteroids
                     for asteroid in asteroids:
                         if missile.active and asteroid.check_collision(missile.x, missile.y):
+                            if sound_explode:
+                                sound_explode.play()
                             missile.active = False
                             # Create fragment missiles from asteroid
                             fragments = asteroid.explode(missile.vx, missile.vy)
@@ -769,9 +1019,13 @@ while running:
                         if missile.active and not player.destroyed and game_state == PLAYING:
                             dist = math.sqrt((missile.x - player.x)**2 + (missile.y - player.y)**2)
                             if dist < 25:
+                                if sound_hit:
+                                    sound_hit.play()
                                 missile.active = False
                                 if player.take_damage(20):
                                     # Player destroyed - create explosion
+                                    if sound_explode:
+                                        sound_explode.play()
                                     fragments = player.explode(missile.vx, missile.vy)
                                     missiles.extend(fragments)
                                     game_state = GAME_OVER
@@ -811,16 +1065,19 @@ while running:
                 current_player = 1 - current_player
                 missile_fired = False
                 active_missile = None
-                # Reset asteroids for next turn
-                asteroids = create_asteroids()
+                # Reset asteroids for next turnPP
+                asteroids = create_asteroids(gravity_objects, black_holes, players)
                 # Clear current missiles
                 missiles = []
                 # Reset CPU AI if switching to CPU
                 if is_cpu_game and players[current_player].is_cpu:
                     cpu_ai.reset_aim()
     
-    # Draw
-    screen.fill(BLACK)
+    # Draw background
+    if background:
+        screen.blit(background, (0, 0))
+    else:
+        screen.fill(BLACK)
     
     if game_state == MENU:
         draw_menu(screen, font_large, font_med, selected_menu_option)
